@@ -1,91 +1,58 @@
 import sys
-from bs4 import BeautifulSoup
-import urllib.request
+from yahoo_finance import Share
 import csv
 import time
 import datetime
 
-baseURL = 'http://finance.yahoo.com'
 stat_order = [
     "Name",
-    "Ticker",
-    "Bid",
-    "Ask",
-    "Prev Close",
-    "Open",
-    "Volume",
-    "Avg Vol (3 month)",
-    "Avg Vol (10 day)",
-    "Forward Annual Dividend Rate",
-    "Forward Annual Dividend Yield",
-    "Trailing Annual Dividend Yield",
-    "5 Year Average Dividend Yield",
-    "Payout Ratio",
-    "Dividend Date",
-    "Ex-Dividend Date",
-    "Beta",
-    "52-Week Change",
-    "S&P500 52-Week Change",
-    "52-Week High",
-    "52-Week Low",
-    "50-Day Moving Average",
-    "200-Day Moving Average",
-    "Shares Outstanding",
-    "Float",
-    "% Held by Insiders",
-    "% Held by Institutions",
-    "Shares Short",
-    "Short Ratio",
-    "Short % of Float",
-    "Market Cap",
-    "Enterprise Value",
-    "Trailing P/E",
-    "Forward P/E",
-    "PEG Ratio",
-    "Price/Sales",
-    "Price/Book",
-    "Enterprise Value/Revenue",
-    "Enterprise Value/EBITDA",
-    "Fiscal Year Ends",
-    "Most Recent Quarter",
-    "Profit Margin",
-    "Operating Margin",
-    "Return on Assets",
-    "Return on Equity",
-    "Revenue",
-    "Revenue Per Share",
-    "Qtrly Revenue Growth",
-    "Gross Profit",
-    "EBITDA",
-    "Net Income Avl to Common",
-    "Diluted EPS",
-    "Qtrly Earnings Growth",
-    "Total Cash",
-    "Total Cash Per Share",
-    "Total Debt",
-    "Total Debt/Equity",
-    "Current Ratio",
-    "Book Value Per Share",
-    "Operating Cash Flow",
-    "Levered Free Cash Flow",
-    "Last Split Factor",
-    "Last Split Date",
-    "Earnings Date"
-]
-
-stats_to_format = [
-    "Shares Outstanding",
-    "Float",
-    "Shares Short",
-    "Market Cap",
-    "Enterprise Value",
-    "Revenue",
-    "EBITDA",
-    "Net Income Avl to Common",
-    "Total Cash",
-    "Total Debt",
-    "Operating Cash Flow",
-    "Levered Free Cash Flow"
+    "price",
+    "change",
+    "percent_change",
+    "volume",
+    "prev_close",
+    "open",
+    "avg_daily_volume",
+    "stock_exchange",
+    "market_cap",
+    "book_value",
+    "ebitda",
+    "dividend_share",
+    "dividend_yield",
+    "earnings_share",
+    "days_high",
+    "days_low",
+    "year_high",
+    "year_low",
+    "50day_moving_avg",
+    "200day_moving_avg",
+    "price_earnings_ratio",
+    "price_earnings_growth_ratio",
+    "price_sales",
+    "price_book",
+    "short_ratio",
+    "trade_datetime",
+    "percent_change_from_year_high",
+    "percent_change_from_year_low",
+    "change_from_year_low",
+    "change_from_year_high",
+    "percent_change_from_200_day_moving_average",
+    "change_from_200_day_moving_average",
+    "percent_change_from_50_day_moving_average",
+    "change_from_50_day_moving_average",
+    "EPS_estimate_next_quarter",
+    "EPS_estimate_next_year",
+    "ex_dividend_date",
+    "EPS_estimate_current_year",
+    "price_EPS_estimate_next_year",
+    "price_EPS_estimate_current_year",
+    "one_yr_targetprice",
+    "change_percent_change",
+    "dividend_pay_date",
+    "currency",
+    "last_trade_with_time",
+    "days_range",
+    "year_range",
 ]
 
 def main():
@@ -97,7 +64,7 @@ def main():
 
     for ndx, ticker in enumerate(tickers):
         sys.stdout.write('(' + str(ndx + 1) + '/' + str(len(tickers)) + ')\r')
-        stock_info.append(scrape_all_info(ticker))
+        stock_info.append(Share(ticker))
     
     write_output(stock_info, output_file_name)
 
@@ -115,98 +82,6 @@ def process_input(argv):
                 tickers.append(ticker)
     return set(tickers)
 
-def scrape_all_info(ticker):
-    ticker_url = baseURL + '/q?s=' + ticker
-
-    with urllib.request.urlopen(ticker_url) as response:
-        finance_page = response.read()
-
-    soup = BeautifulSoup(finance_page)
-    keystats_link = soup.find(id='yfi_key_stats').find('a')
-
-    stock_info = scrape_basic_info(soup)
-
-    if keystats_link and keystats_link.has_attr('href'):
-        stock_info.update(scrape_more_stats(keystats_link['href']))
-
-    return stock_info
-
-def scrape_basic_info(basic_page):
-    title = basic_page.find(id='yfi_rt_quote_summary').find('h2').get_text()
-    name = title.split('(')[0].strip()
-    ticker = title.split('(')[1].strip().rstrip(')')
-    
-    stats = {'Name': name, 'Ticker': ticker}
-
-    for row in basic_page.find(id='yfi_quote_summary_data').find_all('tr'):
-        label = row.th.get_text().strip().strip(':')
-        value = row.td.get_text().strip()
-
-        if label in ('Prev Close', 'Open', 'Bid', 'Ask', 'Earnings Date', 'Volume'):
-            stats[label] = value
-        elif label == "Day's Range:":
-            values = [x.strip() for x in value.split('-')]
-            stats[label + ' Min'] = values[0]
-            stats[label + ' Max'] = values[1]
-
-    return stats
-
-def scrape_more_stats(link):
-    more_stats_url = baseURL + link
-
-    with urllib.request.urlopen(more_stats_url) as response:
-        more_stats_page = response.read()
-
-    soup = BeautifulSoup(more_stats_page)
-
-    tables = soup.find(class_='yfnc_modtitlew1').find_all('tr')
-    tables += soup.find(class_='yfnc_modtitlew2').find_all('tr')
-
-    stats = {}
-
-    for row in tables:
-        cells = row.find_all('td')
-        if len(cells) == 2:
-            full_label = cells[0].get_text()
-            value = cells[1].get_text()
-
-            if 'Avg Vol' in full_label:
-                label = full_label.strip(': ')
-            else:
-                label = full_label.split('(')[0].strip(': ')
-            
-            try: 
-                int(label[-1])
-                label = label[:-1]
-            except:
-                pass
-
-            if label in stats_to_format:
-                value = format_ending(value)
-
-            stats[label] = value
-
-    return stats
-
-def format_ending(value):
-    if value =='N/A':
-        return 'N/A'
-
-    ending = value[-1]
-    number = float(value[:-1])
-
-    if ending == 'K':
-        number *= 1000
-    elif ending == 'M':
-        number *= 1000000
-    elif ending == 'B':
-        number *= 1000000000
-    elif ending == 'T':
-        number *= 1000000000000
-
-    return number
-
-
 def write_output(stock_info, filename):
     with open('output/' + filename + '.csv', 'a', newline='') as csvfile:
         row_writer = csv.writer(csvfile)
@@ -214,13 +89,57 @@ def write_output(stock_info, filename):
         row_writer.writerow([filename])
         row_writer.writerow(stat_order)
 
-        for info_dict in stock_info:
-            row = []
-            for column in stat_order:
-                try:
-                    row.append(info_dict[column])
-                except:
-                    row.append('N/A')
+        for stock in stock_info:
+            row = []       
+
+            row.append(stock.get_name())
+            row.append(stock.get_price())
+            row.append(stock.get_change())
+            row.append(stock.get_percent_change())
+            row.append(stock.get_volume())
+            row.append(stock.get_prev_close())
+            row.append(stock.get_open())
+            row.append(stock.get_avg_daily_volume())
+            row.append(stock.get_stock_exchange())
+            row.append(stock.get_market_cap())
+            row.append(stock.get_book_value())
+            row.append(stock.get_ebitda())
+            row.append(stock.get_dividend_share())
+            row.append(stock.get_dividend_yield())
+            row.append(stock.get_earnings_share())
+            row.append(stock.get_days_high())
+            row.append(stock.get_days_low())
+            row.append(stock.get_year_high())
+            row.append(stock.get_year_low())
+            row.append(stock.get_50day_moving_avg())
+            row.append(stock.get_200day_moving_avg())
+            row.append(stock.get_price_earnings_ratio())
+            row.append(stock.get_price_earnings_growth_ratio())
+            row.append(stock.get_price_sales())
+            row.append(stock.get_price_book())
+            row.append(stock.get_short_ratio())
+            row.append(stock.get_trade_datetime())
+            row.append(stock.get_percent_change_from_year_high())
+            row.append(stock.get_percent_change_from_year_low())
+            row.append(stock.get_change_from_year_low())
+            row.append(stock.get_change_from_year_high())
+            row.append(stock.get_percent_change_from_200_day_moving_average())
+            row.append(stock.get_change_from_200_day_moving_average())
+            row.append(stock.get_percent_change_from_50_day_moving_average())
+            row.append(stock.get_change_from_50_day_moving_average())
+            row.append(stock.get_EPS_estimate_next_quarter())
+            row.append(stock.get_EPS_estimate_next_year())
+            row.append(stock.get_ex_dividend_date())
+            row.append(stock.get_EPS_estimate_current_year())
+            row.append(stock.get_price_EPS_estimate_next_year())
+            row.append(stock.get_price_EPS_estimate_current_year())
+            row.append(stock.get_one_yr_target_price())
+            row.append(stock.get_change_percent_change())
+            row.append(stock.get_dividend_pay_date())
+            row.append(stock.get_currency())
+            row.append(stock.get_last_trade_with_time())
+            row.append(stock.get_days_range())
+            row.append(stock.get_year_range())
 
             row_writer.writerow(row)
 
